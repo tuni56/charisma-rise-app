@@ -13,8 +13,11 @@ class CharismaApp {
             confidenceScore: 60,
             streak: 0,
             lastPractice: null,
-            achievements: []
+            achievements: [],
+            gameScores: {}
         };
+        this.currentGame = null;
+        this.gameScore = 0;
         this.init();
     }
 
@@ -155,6 +158,16 @@ class CharismaApp {
                         'I appreciate your time and attention today.',
                         'Let me share something important with you.',
                         'I believe we can achieve great things together.'
+                    ],
+                    gameScenarios: [
+                        {
+                            situation: "You're opening a team meeting",
+                            dialog: [
+                                { speaker: "You", text: "___", options: ["Good morning, everyone. Thank you for being here.", "Hey guys, let's start.", "Um, hi everyone."] },
+                                { speaker: "Team Member", text: "Good morning! We're excited to hear your updates." },
+                                { speaker: "You", text: "___", options: ["I appreciate your time and attention today.", "Okay, so...", "Right, well..."] }
+                            ]
+                        }
                     ]
                 },
                 { 
@@ -166,6 +179,17 @@ class CharismaApp {
                         'My presence commands respect and attention.',
                         'I communicate clearly and effectively.',
                         'Every word I speak has meaning and impact.'
+                    ],
+                    gameScenarios: [
+                        {
+                            situation: "You're presenting to executives",
+                            dialog: [
+                                { speaker: "Executive", text: "Please tell us about your proposal." },
+                                { speaker: "You", text: "___", options: ["I stand here with confidence and purpose.", "Well, I think maybe...", "So, um, my idea is..."] },
+                                { speaker: "Executive", text: "That's a strong opening. Continue." },
+                                { speaker: "You", text: "___", options: ["Every word I speak has meaning and impact.", "I guess what I'm trying to say is...", "Hopefully this makes sense..."] }
+                            ]
+                        }
                     ]
                 }
             ],
@@ -367,8 +391,14 @@ class CharismaApp {
                 <ul>
                     ${this.inspirationStyle.exercises.map(ex => `<li>${ex}</li>`).join('')}
                 </ul>
+                
+                <div class="game-controls">
+                    <button onclick="startDialogGame()" class="game-btn">🎮 Start Dialog Game</button>
+                </div>
             </div>
         `;
+        
+        this.loadDialogGame();
     }
 
     nextModule() {
@@ -700,6 +730,144 @@ class CharismaApp {
                 .catch(err => console.log('Microphone access denied'));
         }
     }
+
+    loadDialogGame() {
+        const module = this.trainingModules[this.currentModule];
+        if (!module.gameScenarios) return;
+        
+        this.currentGame = module.gameScenarios[0];
+        this.gameScore = 0;
+        
+        const gameDiv = document.getElementById('dialog-game');
+        gameDiv.innerHTML = `
+            <div class="game-intro">
+                <p><strong>Scenario:</strong> ${this.currentGame.situation}</p>
+                <p>Choose the most confident responses to complete the dialog!</p>
+            </div>
+        `;
+    }
+
+    startDialogGame() {
+        if (!this.currentGame) return;
+        
+        this.gameScore = 0;
+        this.currentDialogStep = 0;
+        this.showDialogStep();
+    }
+
+    showDialogStep() {
+        const step = this.currentGame.dialog[this.currentDialogStep];
+        const gameDiv = document.getElementById('dialog-game');
+        
+        if (step.speaker === "You" && step.options) {
+            gameDiv.innerHTML = `
+                <div class="dialog-step">
+                    <div class="dialog-context">
+                        ${this.currentGame.dialog.slice(0, this.currentDialogStep).map(d => 
+                            `<p><strong>${d.speaker}:</strong> ${d.text.replace('___', '[Your response]')}</p>`
+                        ).join('')}
+                    </div>
+                    <div class="current-dialog">
+                        <p><strong>Your turn:</strong></p>
+                        <div class="dialog-options">
+                            ${step.options.map((option, index) => `
+                                <button class="dialog-option" onclick="selectDialogOption(${index})">${option}</button>
+                            `).join('')}
+                        </div>
+                    </div>
+                    <div class="game-progress">
+                        Step ${this.currentDialogStep + 1} of ${this.currentGame.dialog.length} | Score: ${this.gameScore}
+                    </div>
+                </div>
+            `;
+        } else {
+            // Show other speaker's response
+            gameDiv.innerHTML = `
+                <div class="dialog-step">
+                    <div class="dialog-context">
+                        ${this.currentGame.dialog.slice(0, this.currentDialogStep + 1).map(d => 
+                            `<p><strong>${d.speaker}:</strong> ${d.text}</p>`
+                        ).join('')}
+                    </div>
+                    <button onclick="nextDialogStep()" class="continue-btn">Continue</button>
+                </div>
+            `;
+        }
+    }
+
+    selectDialogOption(optionIndex) {
+        const step = this.currentGame.dialog[this.currentDialogStep];
+        const selectedOption = step.options[optionIndex];
+        
+        // Score based on confidence level (first option is usually most confident)
+        const score = optionIndex === 0 ? 10 : optionIndex === 1 ? 5 : 0;
+        this.gameScore += score;
+        
+        // Update dialog with selected option
+        this.currentGame.dialog[this.currentDialogStep].text = selectedOption;
+        
+        // Show feedback
+        const feedback = optionIndex === 0 ? "Excellent choice! Very confident." : 
+                        optionIndex === 1 ? "Good choice, but could be more assertive." : 
+                        "Consider a more confident approach.";
+        
+        document.getElementById('dialog-game').innerHTML = `
+            <div class="dialog-feedback">
+                <p><strong>You chose:</strong> "${selectedOption}"</p>
+                <p class="feedback ${optionIndex === 0 ? 'excellent' : optionIndex === 1 ? 'good' : 'needs-work'}">${feedback}</p>
+                <p><strong>Points earned:</strong> ${score}</p>
+                <button onclick="nextDialogStep()" class="continue-btn">Continue</button>
+            </div>
+        `;
+    }
+
+    nextDialogStep() {
+        this.currentDialogStep++;
+        
+        if (this.currentDialogStep >= this.currentGame.dialog.length) {
+            this.endDialogGame();
+        } else {
+            this.showDialogStep();
+        }
+    }
+
+    endDialogGame() {
+        const maxScore = this.currentGame.dialog.filter(d => d.options).length * 10;
+        const percentage = Math.round((this.gameScore / maxScore) * 100);
+        
+        // Save game score
+        this.userProgress.gameScores[this.currentModule] = this.gameScore;
+        this.saveProgress();
+        
+        // Show results
+        document.getElementById('dialog-game').innerHTML = `
+            <div class="game-results">
+                <h4>🎉 Dialog Complete!</h4>
+                <div class="score-display">
+                    <p><strong>Final Score:</strong> ${this.gameScore}/${maxScore} (${percentage}%)</p>
+                    <div class="score-bar">
+                        <div class="score-fill" style="width: ${percentage}%"></div>
+                    </div>
+                </div>
+                <div class="performance-feedback">
+                    ${percentage >= 80 ? "🌟 Outstanding! You speak with true CEO confidence!" :
+                      percentage >= 60 ? "👍 Great job! You're developing strong leadership presence." :
+                      percentage >= 40 ? "📈 Good progress! Keep practicing confident responses." :
+                      "💪 Keep practicing! Confidence grows with repetition."}
+                </div>
+                <button onclick="startDialogGame()" class="play-again-btn">Play Again</button>
+            </div>
+        `;
+        
+        // Update confidence score
+        if (percentage >= 80) {
+            this.userProgress.confidenceScore += 3;
+        } else if (percentage >= 60) {
+            this.userProgress.confidenceScore += 2;
+        } else if (percentage >= 40) {
+            this.userProgress.confidenceScore += 1;
+        }
+    }
 }
 
 // Initialize app
@@ -754,4 +922,16 @@ function logout() {
 
 function speakText(text) {
     app.speakText(text);
+}
+
+function startDialogGame() {
+    app.startDialogGame();
+}
+
+function selectDialogOption(index) {
+    app.selectDialogOption(index);
+}
+
+function nextDialogStep() {
+    app.nextDialogStep();
 }
